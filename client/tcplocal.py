@@ -3,7 +3,8 @@ import socket
 import hashlib
 
 from utils import LOGGER
-from constants import BUF_SIZE, STAGE_HANDSHAKE, STAGE_STREAM, STAGE_INIT
+from constants import BUF_SIZE, STAGE_HANDSHAKE, STAGE_STREAM, STAGE_INIT, PACK_SIZE_RAW, PACK_SIZE_ENCRYPT
+from cipher import AESCipher
 
 
 class TCPLocal(asyncore.dispatcher):
@@ -11,8 +12,9 @@ class TCPLocal(asyncore.dispatcher):
     server_port = None
     token = None
     conn_list = []
+    key = None
 
-    def __init__(self, localhost, localport, serverhost, serverport, user):
+    def __init__(self, localhost, localport, serverhost, serverport, user, key):
         asyncore.dispatcher.__init__(self)
         self.server_addr = serverhost
         self.server_port = serverport
@@ -21,6 +23,7 @@ class TCPLocal(asyncore.dispatcher):
         self.set_reuse_addr()
         self.bind((localhost, localport))
         self.listen(5)
+        self.key = key
 
     def handle_accept(self):
         pair = self.accept()
@@ -89,14 +92,14 @@ class LocalConnection(asyncore.dispatcher):
                     port = self.buffer_recv[5 + alen] * 256 + self.buffer_recv[5 + alen + 1]
                     self.buffer_send += b'\x05\x00\x00\x03' + self.buffer_recv[4:5 + alen + 3]
                 LOGGER.info('%s local handshake: %s:%d', id(self), addr, port)
-                self.remote = RemoteConnection(self.server.server_addr, self.server.server_port, self.server.token)
+                self.remote = RemoteConnection(self.server.server_addr, self.server.server_port, self.server.token, self.server.key)
                 self.remote.local = self
-                self.remote.buffer += self.buffer_recv[3:]  # include atyp + addr + port
+                self.remote.buffer_send_raw += self.buffer_recv[3:]  # include atyp + addr + port
                 self.buffer_recv = b''
                 self.stage = STAGE_STREAM
                 continue
             elif self.stage == STAGE_STREAM:
-                self.remote.buffer += self.buffer_recv
+                self.remote.buffer_send_raw += self.buffer_recv
                 self.buffer_recv = b''
             return
 
@@ -117,14 +120,19 @@ class LocalConnection(asyncore.dispatcher):
 
 class RemoteConnection(asyncore.dispatcher):
 
-    buffer = b''
+    buffer_send_raw = b''
+    buffer_send = b''
+    buffer_recv_raw = b''
+    buffer_recv = b''
     local = None
+    cipher = None
 
-    def __init__(self, host, port, token):
+    def __init__(self, host, port, token, key):
         asyncore.dispatcher.__init__(self)
-        self.buffer += token
+        self.buffer_send_raw += token
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.connect((host, port))
+        self.cipher = AESCipher(key)
 
     def handle_connect(self):
         pass
@@ -137,12 +145,27 @@ class RemoteConnection(asyncore.dispatcher):
     def handle_read(self):
         data = self.recv(BUF_SIZE)
         #LOGGER.debug('%s remote recv: %s', id(self), data)
-        self.local.buffer_send += data
+        self.buffer_recv += data
+        while len(self.buffer_recv) >= PACK_SIZE_ENCRYPT:
+            self.buffer_recv_raw += self.cipher.decrypt(self.buffer_recv[0:PACK_SIZE_ENCRYPT])
+            self.buffer_recv = self.buffer_recv[PACK_SIZE_ENCRYPT:]
+        if len(self.buffer_recv_raw) > 0:
+            self.local.buffer_send += self.buffer_recv_raw
+            self.buffer_recv_raw = b''
 
     def writable(self):
-        return (len(self.buffer) > 0)
+        while len(self.buffer_send_raw) > 0:
+            data = None
+            if len(self.buffer_send_raw) >= PACK_SIZE_RAW:
+                data = self.buffer_send_raw[0:PACK_SIZE_RAW]
+                self.buffer_send_raw = self.buffer_send_raw[PACK_SIZE_RAW:]
+            else:
+                data = self.buffer_send_raw
+                self.buffer_send_raw = b''
+            self.buffer_send += self.cipher.encrypt(data)
+        return (len(self.buffer_send) > 0)
 
     def handle_write(self):
-        sent = self.send(self.buffer)
+        sent = self.send(self.buffer_send)
         #LOGGER.debug('%s remote send %s', id(self), self.buffer[:sent])
-        self.buffer = self.buffer[sent:]
+        self.buffer_send = self.buffer_send[sent:]
