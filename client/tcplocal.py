@@ -34,6 +34,15 @@ class TCPLocal(asyncore.dispatcher):
             handler.server = self
             self.conn_list.append(handler)
 
+    def stop(self):
+        for item in self.conn_list:
+            if item.remote:
+                item.remote.handle_close()
+            else:
+                item.handle_close()
+        self.handle_close()
+        raise asyncore.ExitNow('TCPLocal.stop()')
+
 
 class LocalConnection(asyncore.dispatcher):
 
