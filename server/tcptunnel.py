@@ -2,21 +2,24 @@ import asyncore
 import socket
 
 from utils import LOGGER
-from constants import BUF_SIZE, STAGE_HANDSHAKE, STAGE_STREAM, STAGE_INIT, TOKEN_LEN, PACK_SIZE_RAW, PACK_SIZE_ENCRYPT
+from constants import BUF_SIZE, STAGE_HANDSHAKE, STAGE_STREAM, STAGE_INIT, TOKEN_LEN, PACK_SIZE_RAW, PACK_SIZE_ENCRYPT, MAGIC_LEN, MAGIC_LIST_LEN
 from cipher import AESCipher
 
 
 class TCPServer(asyncore.dispatcher):
 
     conn_list = []
+    token_list = []
+    magic_list = []
 
-    def __init__(self, host, port, key):
+    def __init__(self, host, port, key, token_list):
         asyncore.dispatcher.__init__(self)
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.set_reuse_addr()
         self.bind((host, port))
         self.listen(5)
         self.key = key
+        self.token_list = token_list
 
     def handle_accept(self):
         pair = self.accept()
@@ -26,6 +29,17 @@ class TCPServer(asyncore.dispatcher):
             handler = LocalConnection(sock, self.key)
             handler.server = self
             self.conn_list.append(handler)
+
+    def query_token(self, token):
+        return token in self.token_list
+
+    def query_magic(self, magic):
+        if magic not in self.magic_list:
+            self.magic_list.append(magic)
+            if len(self.magic_list) > MAGIC_LIST_LEN:
+                self.magic_list.pop(0)
+            return True
+        return False
 
 
 class LocalConnection(asyncore.dispatcher):
@@ -55,11 +69,23 @@ class LocalConnection(asyncore.dispatcher):
         #LOGGER.debug('%s local recv %s', id(self), data)
         while True:
             if self.stage == STAGE_INIT:
-                if len(self.buffer_recv_raw) < TOKEN_LEN:
+                if len(self.buffer_recv_raw) < TOKEN_LEN + MAGIC_LEN:
                     return
                 token = self.buffer_recv_raw[0:TOKEN_LEN]
-                LOGGER.info("accept token: %s", token.hex())
-                self.buffer_recv_raw = self.buffer_recv_raw[TOKEN_LEN:]
+                magic = self.buffer_recv_raw[TOKEN_LEN:TOKEN_LEN + MAGIC_LEN]
+                LOGGER.info("%s accept token: %s, magic: %s", id(self), token.hex(), magic.hex())
+
+                # auth
+                if not self.server.query_token(token):
+                    LOGGER.warning('%s token not exist!', id(self))
+                    self.handle_close()
+                    return
+                if not self.server.query_magic(magic):
+                    LOGGER.warning('%s duplicated magic!', id(self))
+                    self.handle_close()
+                    return
+
+                self.buffer_recv_raw = self.buffer_recv_raw[TOKEN_LEN + MAGIC_LEN:]
                 self.stage = STAGE_HANDSHAKE
                 continue
             elif self.stage == STAGE_HANDSHAKE:

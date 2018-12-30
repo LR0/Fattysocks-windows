@@ -1,9 +1,10 @@
 import asyncore
 import socket
 import hashlib
+import os
 
 from utils import LOGGER
-from constants import BUF_SIZE, STAGE_HANDSHAKE, STAGE_STREAM, STAGE_INIT, PACK_SIZE_RAW, PACK_SIZE_ENCRYPT
+from constants import BUF_SIZE, STAGE_HANDSHAKE, STAGE_STREAM, STAGE_INIT, PACK_SIZE_RAW, PACK_SIZE_ENCRYPT, MAGIC_LEN
 from cipher import AESCipher
 
 
@@ -139,6 +140,8 @@ class RemoteConnection(asyncore.dispatcher):
     def __init__(self, host, port, token, key):
         asyncore.dispatcher.__init__(self)
         self.buffer_send_raw += token
+        magic = bytearray(os.urandom(MAGIC_LEN))
+        self.buffer_send_raw += magic
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.connect((host, port))
         self.cipher = AESCipher(key)

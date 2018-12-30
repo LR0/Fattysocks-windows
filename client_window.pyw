@@ -10,6 +10,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QPushButton,
 from PyQt5.QtCore import Qt, QSize, QAbstractTableModel, QVariant, QPoint, pyqtSignal
 from PyQt5.QtGui import QCursor,QColor, QImage, QPalette, QBrush, QPixmap, QIcon
 from client.client import Client
+from utils import save_config, load_config
 
 BUTTON_ON_STYLE = """
     QPushButton{ background-color: #00D473; margin-left: 10px; margin-right: 10px; }
@@ -204,19 +205,19 @@ class FrontWindow(QMainWindow):
         self.lportedit.move(275, 140)
 
         self.connect_btn = QPushButton("代理: OFF", self)
-        self.connect_btn.setStyleSheet(BUTTON_ON_STYLE)
+        self.connect_btn.setStyleSheet(BUTTON_OFF_STYLE)
         self.connect_btn.clicked.connect(self.toggle_connect)
         self.connect_btn.resize(100, 30)
         self.connect_btn.move(30, 180)
 
         self.global_btn = QPushButton("全局: OFF", self)
-        self.global_btn.setStyleSheet(BUTTON_ON_STYLE)
+        self.global_btn.setStyleSheet(BUTTON_OFF_STYLE)
         self.global_btn.clicked.connect(self.toggle_global)
         self.global_btn.resize(100, 30)
         self.global_btn.move(120, 180)
 
         self.boot_btn = QPushButton("自启动: OFF", self)
-        self.boot_btn.setStyleSheet(BUTTON_ON_STYLE)
+        self.boot_btn.setStyleSheet(BUTTON_OFF_STYLE)
         self.boot_btn.clicked.connect(self.toggle_boot)
         self.boot_btn.resize(115, 30)
         self.boot_btn.move(210, 180)
@@ -226,6 +227,14 @@ class FrontWindow(QMainWindow):
         self.show()
 
     def init_state(self):
+        # config
+        config = load_config()
+        if config:
+            self.addredit.setText(config.get('addr'))
+            self.portedit.setText(str(config.get('port')))
+            self.lportedit.setText(str(config.get('lport')))
+            self.useredit.setText(config.get('user'))
+
         # global
         key = 'ProxyEnable'
         path = r'Software\Microsoft\Windows\CurrentVersion\Internet Settings'
@@ -234,17 +243,17 @@ class FrontWindow(QMainWindow):
             reg = winreg.OpenKeyEx(winreg.HKEY_CURRENT_USER, path, 0, access=winreg.KEY_ALL_ACCESS)
             value, ktype = winreg.QueryValueEx(reg, key)
             winreg.CloseKey(reg)
-        except:
+        except Exception:
             print('Reg ProxyEnable not exist!')
         if value:
             if value == 1:
                 self.is_global = True
                 self.global_btn.setText('全局: ON')
-                self.global_btn.setStyleSheet(BUTTON_OFF_STYLE)
+                self.global_btn.setStyleSheet(BUTTON_ON_STYLE)
             else:
                 self.is_global = True
                 self.global_btn.setText('全局: ON')
-                self.global_btn.setStyleSheet(BUTTON_OFF_STYLE)
+                self.global_btn.setStyleSheet(BUTTON_ON_STYLE)
 
         # boot
         key = 'Fattysocks'
@@ -254,20 +263,20 @@ class FrontWindow(QMainWindow):
             reg = winreg.OpenKeyEx(winreg.HKEY_CURRENT_USER, path, 0, access=winreg.KEY_ALL_ACCESS)
             value, ktype = winreg.QueryValueEx(reg, key)
             winreg.CloseKey(reg)
-        except:
+        except Exception:
             print('Reg Fattysocks not exist!')
             self.is_boot = False
             self.boot_btn.setText('自启动: OFF')
-            self.boot_btn.setStyleSheet(BUTTON_ON_STYLE)
+            self.boot_btn.setStyleSheet(BUTTON_OFF_STYLE)
         if value:
             if value == sys.argv[0]:
                 self.is_boot = True
                 self.boot_btn.setText('自启动: ON')
-                self.boot_btn.setStyleSheet(BUTTON_OFF_STYLE)
+                self.boot_btn.setStyleSheet(BUTTON_ON_STYLE)
             else:
                 self.is_boot = False
                 self.boot_btn.setText('自启动: OFF')
-                self.boot_btn.setStyleSheet(BUTTON_ON_STYLE)
+                self.boot_btn.setStyleSheet(BUTTON_OFF_STYLE)
 
         self.tray.setToolTip(self.get_tooltip())
 
@@ -327,16 +336,25 @@ class FrontWindow(QMainWindow):
             self.client.stop()
             self.client = None
             self.connect_btn.setText('代理: OFF')
-            self.connect_btn.setStyleSheet(BUTTON_ON_STYLE)
+            self.connect_btn.setStyleSheet(BUTTON_OFF_STYLE)
         else:
             addr = self.addredit.text()
             port = int(self.portedit.text())
             lport = int(self.lportedit.text())
             user = self.useredit.text()
+
+            # save config
+            config = {}
+            config['addr'] = addr
+            config['port'] = port
+            config['lport'] = lport
+            config['user'] = user
+            save_config(config)
+
             self.client = Client(lport, addr, port, user)
             self.client.run()
             self.connect_btn.setText('代理: ON')
-            self.connect_btn.setStyleSheet(BUTTON_OFF_STYLE)
+            self.connect_btn.setStyleSheet(BUTTON_ON_STYLE)
         self.tray.setToolTip(self.get_tooltip())
 
     def toggle_global(self):
@@ -348,7 +366,7 @@ class FrontWindow(QMainWindow):
                 reg = winreg.OpenKeyEx(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_ALL_ACCESS)
                 winreg.SetValueEx(reg, key, 0, winreg.REG_DWORD, value)
                 winreg.CloseKey(reg)
-            except:
+            except Exception:
                 print('Reg set ProxyEnable failed!')
 
             key = 'ProxyServer'
@@ -358,12 +376,12 @@ class FrontWindow(QMainWindow):
                 reg = winreg.OpenKeyEx(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_ALL_ACCESS)
                 winreg.SetValueEx(reg, key, 0, winreg.REG_SZ, value)
                 winreg.CloseKey(reg)
-            except:
+            except Exception:
                 print('Reg set ProxyServer failed!')
             
             self.is_global = True
             self.global_btn.setText('全局: ON')
-            self.global_btn.setStyleSheet(BUTTON_OFF_STYLE)
+            self.global_btn.setStyleSheet(BUTTON_ON_STYLE)
         else:
             key = 'ProxyEnable'
             path = r'Software\Microsoft\Windows\CurrentVersion\Internet Settings'
@@ -372,12 +390,12 @@ class FrontWindow(QMainWindow):
                 reg = winreg.OpenKeyEx(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_ALL_ACCESS)
                 winreg.SetValueEx(reg, key, 0, winreg.REG_DWORD, value)
                 winreg.CloseKey(reg)
-            except Exception as e:
+            except Exception:
                 print('Reg set ProxyEnable failed!')
             
             self.is_global = False
             self.global_btn.setText('全局: OFF')
-            self.global_btn.setStyleSheet(BUTTON_ON_STYLE)
+            self.global_btn.setStyleSheet(BUTTON_OFF_STYLE)
         self.tray.setToolTip(self.get_tooltip())
 
     def toggle_boot(self):
@@ -389,12 +407,12 @@ class FrontWindow(QMainWindow):
                 reg = winreg.OpenKeyEx(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_ALL_ACCESS)
                 winreg.SetValueEx(reg, key, 0, winreg.REG_SZ, value)
                 winreg.CloseKey(reg)
-            except:
+            except Exception:
                 print('Reg set Fattysocks failed!')
 
             self.is_boot = True
             self.boot_btn.setText('自启动: ON')
-            self.boot_btn.setStyleSheet(BUTTON_OFF_STYLE)
+            self.boot_btn.setStyleSheet(BUTTON_ON_STYLE)
         else:
             key = 'Fattysocks'
             path = r'Software\Microsoft\Windows\CurrentVersion\Run'
@@ -402,12 +420,12 @@ class FrontWindow(QMainWindow):
                 reg = winreg.OpenKeyEx(winreg.HKEY_CURRENT_USER, path, 0, winreg.KEY_ALL_ACCESS)
                 winreg.DeleteValue(reg, key)
                 winreg.CloseKey(reg)
-            except:
+            except Exception:
                 print('Reg del ProxyEnable failed!')
 
             self.is_boot = False
             self.boot_btn.setText('自启动: OFF')
-            self.boot_btn.setStyleSheet(BUTTON_ON_STYLE)
+            self.boot_btn.setStyleSheet(BUTTON_OFF_STYLE)
 
 
 MAIN_WINDOW = None

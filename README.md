@@ -5,10 +5,7 @@ Unfinished!
 TODO:
 
 	1. udp local
-
+	
 	2. local http proxy
-
-	3. server authentication
-
-	4. udp server has cpu issue
-
+	
+	3. udp server has cpu issue
