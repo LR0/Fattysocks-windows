@@ -1,3 +1,4 @@
 @echo off
-pyinstaller -F -i res/icon.png -n Fattysocks client_window.pyw
+pyinstaller -F -i res\icon.ico -n Fattysocks -p res --windowed --onefile client_window.pyw
+xcopy /y res\*.* dist\res\*.*
 pause
