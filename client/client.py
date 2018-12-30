@@ -20,7 +20,7 @@ class Client:
             asyncore.close_all()
 
     def process_client(self):
-        self.tcp_server = TCPLocal('localhost', self.lport, self.addr, self.port, self.user, b'thisIsAKey')
+        self.tcp_server = TCPLocal('localhost', self.lport, self.addr, self.port, self.user)
         try:
             asyncore.loop()
         except asyncore.ExitNow:

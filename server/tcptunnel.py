@@ -3,7 +3,7 @@ import socket
 import time
 
 from utils import LOGGER, save_traffic
-from constants import BUF_SIZE, STAGE_HANDSHAKE, STAGE_STREAM, STAGE_INIT, TOKEN_LEN, PACK_SIZE_RAW, PACK_SIZE_ENCRYPT, MAGIC_LEN, MAGIC_LIST_LEN, TRAFFIC_SAVE_INTERVAL
+from constants import BUF_SIZE, STAGE_HANDSHAKE, STAGE_STREAM, STAGE_INIT, TOKEN_LEN, MAGIC_LEN, MAGIC_LIST_LEN, TRAFFIC_SAVE_INTERVAL, PACK_PAD_LEN
 from cipher import AESCipher
 
 
@@ -15,13 +15,12 @@ class TCPServer(asyncore.dispatcher):
     traffic_map = {}
     last_traffic_save_time = None
 
-    def __init__(self, host, port, key, token_list):
+    def __init__(self, host, port, token_list):
         asyncore.dispatcher.__init__(self)
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
         self.set_reuse_addr()
         self.bind((host, port))
         self.listen(5)
-        self.key = key
         self.token_list = token_list
 
     def handle_accept(self):
@@ -29,7 +28,7 @@ class TCPServer(asyncore.dispatcher):
         if pair is not None:
             sock, addr = pair
             LOGGER.info('incoming connection from %s', repr(addr))
-            handler = LocalConnection(sock, self.key)
+            handler = LocalConnection(sock)
             handler.server = self
             self.conn_list.append(handler)
 
@@ -59,19 +58,19 @@ class TCPServer(asyncore.dispatcher):
 
 class LocalConnection(asyncore.dispatcher):
 
-    buffer_send = b''
-    buffer_send_raw = b''
     buffer_recv = b''
     buffer_recv_raw = b''
+    buffer_send = b''
+    buffer_send_raw = b''
     server = None
     remote = None
     stage = STAGE_INIT
     cipher = None
     token = None
 
-    def __init__(self, sock, key):
+    def __init__(self, sock):
         super().__init__(sock)
-        self.cipher = AESCipher(key)
+        self.cipher = AESCipher()
 
     def handle_read(self):
         data = self.recv(BUF_SIZE)
@@ -80,9 +79,9 @@ class LocalConnection(asyncore.dispatcher):
         if self.token:
             self.server.add_traffic(self.token, len(data) / (1024.0 * 1024.0))
         self.buffer_recv += data
-        while len(self.buffer_recv) >= PACK_SIZE_ENCRYPT:
-            self.buffer_recv_raw += self.cipher.decrypt(self.buffer_recv[0:PACK_SIZE_ENCRYPT])
-            self.buffer_recv = self.buffer_recv[PACK_SIZE_ENCRYPT:]
+        ddata, dlen = self.cipher.decrypt_all(self.buffer_recv)
+        self.buffer_recv_raw += ddata
+        self.buffer_recv = self.buffer_recv[dlen:]
 
         #LOGGER.debug('%s local recv %s', id(self), data)
         while True:
@@ -146,15 +145,9 @@ class LocalConnection(asyncore.dispatcher):
             return
 
     def writable(self):
-        while len(self.buffer_send_raw) > 0:
-            data = None
-            if len(self.buffer_send_raw) >= PACK_SIZE_RAW:
-                data = self.buffer_send_raw[0:PACK_SIZE_RAW]
-                self.buffer_send_raw = self.buffer_send_raw[PACK_SIZE_RAW:]
-            else:
-                data = self.buffer_send_raw
-                self.buffer_send_raw = b''
-            self.buffer_send += self.cipher.encrypt(data)
+        if len(self.buffer_send_raw) > 0:
+            self.buffer_send += self.cipher.encrypt_all(self.buffer_send_raw)
+            self.buffer_send_raw = b''
         return (len(self.buffer_send) > 0 and self.stage == STAGE_STREAM)
 
     def handle_write(self):
