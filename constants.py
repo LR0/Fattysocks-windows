@@ -14,3 +14,6 @@ STAGE_STREAM = 1
 
 CONFIG_FILE = 'configuration.yaml'
 USERS_FILE = 'users.yaml'
+TRAFFIC_FILE = 'traffic.yaml'
+
+TRAFFIC_SAVE_INTERVAL = 30

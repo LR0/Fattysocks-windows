@@ -1,8 +1,9 @@
 import asyncore
 import socket
+import time
 
-from utils import LOGGER
-from constants import BUF_SIZE, STAGE_HANDSHAKE, STAGE_STREAM, STAGE_INIT, TOKEN_LEN, PACK_SIZE_RAW, PACK_SIZE_ENCRYPT, MAGIC_LEN, MAGIC_LIST_LEN
+from utils import LOGGER, save_traffic
+from constants import BUF_SIZE, STAGE_HANDSHAKE, STAGE_STREAM, STAGE_INIT, TOKEN_LEN, PACK_SIZE_RAW, PACK_SIZE_ENCRYPT, MAGIC_LEN, MAGIC_LIST_LEN, TRAFFIC_SAVE_INTERVAL
 from cipher import AESCipher
 
 
@@ -11,6 +12,8 @@ class TCPServer(asyncore.dispatcher):
     conn_list = []
     token_list = []
     magic_list = []
+    traffic_map = {}
+    last_traffic_save_time = None
 
     def __init__(self, host, port, key, token_list):
         asyncore.dispatcher.__init__(self)
@@ -41,6 +44,18 @@ class TCPServer(asyncore.dispatcher):
             return True
         return False
 
+    def add_traffic(self, token, size_mb):
+        if token not in self.traffic_map:
+            self.traffic_map[token] = 0
+        self.traffic_map[token] += size_mb
+
+        if self.last_traffic_save_time == None or time.time() - self.last_traffic_save_time > TRAFFIC_SAVE_INTERVAL:
+            self.last_traffic_save_time = time.time()
+            if save_traffic(self.traffic_map):
+                self.traffic_map = {}
+            else:
+                LOGGER.error('cannot save traffic file!')
+
 
 class LocalConnection(asyncore.dispatcher):
 
@@ -52,6 +67,7 @@ class LocalConnection(asyncore.dispatcher):
     remote = None
     stage = STAGE_INIT
     cipher = None
+    token = None
 
     def __init__(self, sock, key):
         super().__init__(sock)
@@ -61,6 +77,8 @@ class LocalConnection(asyncore.dispatcher):
         data = self.recv(BUF_SIZE)
         if not data:
             return
+        if self.token:
+            self.server.add_traffic(self.token, len(data) / (1024.0 * 1024.0))
         self.buffer_recv += data
         while len(self.buffer_recv) >= PACK_SIZE_ENCRYPT:
             self.buffer_recv_raw += self.cipher.decrypt(self.buffer_recv[0:PACK_SIZE_ENCRYPT])
@@ -72,6 +90,7 @@ class LocalConnection(asyncore.dispatcher):
                 if len(self.buffer_recv_raw) < TOKEN_LEN + MAGIC_LEN:
                     return
                 token = self.buffer_recv_raw[0:TOKEN_LEN]
+                self.token = token
                 magic = self.buffer_recv_raw[TOKEN_LEN:TOKEN_LEN + MAGIC_LEN]
                 LOGGER.info("%s accept token: %s, magic: %s", id(self), token.hex(), magic.hex())
 
@@ -142,6 +161,8 @@ class LocalConnection(asyncore.dispatcher):
         sent = self.send(self.buffer_send)
         #LOGGER.debug('%s local send %s', id(self), self.buffer[:sent])
         self.buffer_send = self.buffer_send[sent:]
+        if self.token:
+            self.server.add_traffic(self.token, sent / (1024.0 * 1024.0))
 
     def handle_close(self):
         LOGGER.info('%s local close', id(self))
