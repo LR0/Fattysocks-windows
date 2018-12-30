@@ -1,4 +1,5 @@
 @echo off
+rmdir /s /q server_release
 md server_release
 echo f | xcopy /y /i server_startup.py server_release\server_startup.py
 echo f | xcopy /y /i utils.py server_release\utils.py

@@ -6,7 +6,7 @@ from PyQt5.QtWidgets import (QApplication, QWidget, QPushButton,
                              QColorDialog, QInputDialog, QFileDialog,
                              QMainWindow, QLabel, QGroupBox, QFormLayout,
                              QScrollArea, QFrame, QComboBox, QSystemTrayIcon,
-                             QMenu, QAction)
+                             QMenu, QAction, qApp)
 from PyQt5.QtCore import Qt, QSize, QAbstractTableModel, QVariant, QPoint, pyqtSignal
 from PyQt5.QtGui import QCursor,QColor, QImage, QPalette, QBrush, QPixmap, QIcon
 from client.client import Client
@@ -110,7 +110,7 @@ class FrontWindow(QMainWindow):
 
         closeBtn = QPushButton('x',self)
         closeBtn.resize(50, 40)
-        closeBtn.clicked.connect(self.close)
+        closeBtn.clicked.connect(self.handle_close)
         closeBtn.setObjectName('CloseButton')
         closeBtn.setStyleSheet('''
             #CloseButton{
@@ -285,7 +285,7 @@ class FrontWindow(QMainWindow):
         self.tray.activated.connect(self.tray_event)
         self.tray_menu = QMenu(QApplication.desktop())
         self.RestoreAction = QAction('打开', self, triggered=self.show)
-        self.QuitAction = QAction('退出', self, triggered=self.close)
+        self.QuitAction = QAction('退出', self, triggered=self.handle_close)
         self.tray_menu.addAction(self.RestoreAction)
         self.tray_menu.addAction(self.QuitAction)
         self.tray.setContextMenu(self.tray_menu)
@@ -309,6 +309,10 @@ class FrontWindow(QMainWindow):
     def tray_event(self, reason):
         if reason == QSystemTrayIcon.DoubleClick:
             self.show()
+
+    def handle_close(self):
+        self.close()
+        qApp.quit()
 
     def closeEvent(self, event):
         self.tray.hide()
