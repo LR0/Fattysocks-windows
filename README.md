@@ -6,6 +6,8 @@ TODO:
 
 	1. udp local
 	
-	2. local http proxy
+	2. udp server has cpu issue
 	
-	3. udp server has cpu issue
+	3. local http proxy
+	
+	4. upload slow issue

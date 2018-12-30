@@ -437,4 +437,4 @@ MAIN_WINDOW = None
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     MAIN_WINDOW = FrontWindow()
-    sys.exit(app.exec())
+    sys.exit(app.exec_())
