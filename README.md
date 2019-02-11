@@ -11,3 +11,7 @@ TODO:
 	3. local http proxy
 	
 	4. upload slow issue
+	
+	5. client stability issue
+	
+	6. client boot start issue
